@@ -8,6 +8,7 @@ use barter_instrument::{
     Keyed,
     asset::{ExchangeAsset, name::AssetNameInternal},
     index::IndexedInstruments,
+    instrument::name::InstrumentNameInternal,
 };
 use barter_integration::snapshot::Snapshot;
 use chrono::{DateTime, Utc};
@@ -24,6 +25,7 @@ pub struct EngineStateBuilder<'a, InstrumentData, Strategy, Risk> {
     pub trading_state: Option<TradingState>,
     pub time_engine_start: Option<DateTime<Utc>>,
     pub balances: FnvHashMap<ExchangeAsset<AssetNameInternal>, Balance>,
+    pub instrument_data: FnvHashMap<InstrumentNameInternal, InstrumentData>,
     phantom: PhantomData<InstrumentData>,
 }
 
@@ -46,6 +48,7 @@ where
             trading_state: None,
             strategy: None,
             risk: None,
+            instrument_data: FnvHashMap::default(),
             balances: FnvHashMap::default(),
             phantom: PhantomData,
         }
@@ -114,6 +117,24 @@ where
         self
     }
 
+    /// Optionally provide initial instrument `InstrumentDataState`s.
+    ///
+    /// Note the internal implementation uses a `HashMap`, so duplicate
+    /// `InstrumentNameInternal` keys are overwritten.
+    pub fn instrument_datas<DataIter, KeyedData>(mut self, instruments: DataIter) -> Self
+    where
+        DataIter: IntoIterator<Item = KeyedData>,
+        KeyedData: Into<Keyed<InstrumentNameInternal, InstrumentData>>,
+    {
+        self.instrument_data
+            .extend(instruments.into_iter().map(|keyed| {
+                let Keyed { key, value } = keyed.into();
+
+                (key, value)
+            }));
+        self
+    }
+
     /// Use the builder data to generate the associated [`EngineState`].
     ///
     /// If optional data is not provided (eg/ Balances), default values are used (eg/ zero Balance).
@@ -125,6 +146,7 @@ where
             time_engine_start,
             trading_state,
             balances,
+            instrument_data,
             phantom: _,
         } = self;
 
@@ -146,14 +168,18 @@ where
                 }))
         }
 
+        // Update empty InstrumentStates from provided InstrumentDataStates
+        let mut instrument_states =
+            generate_empty_indexed_instrument_states(instruments, time_engine_start);
+        for (key, instrument_data) in instrument_data {
+            instrument_states.instrument_mut(&key).data = instrument_data;
+        }
+
         EngineState {
             trading: trading_state.unwrap_or_default(),
             connectivity: generate_empty_indexed_connectivity_states(instruments),
             assets,
-            instruments: generate_empty_indexed_instrument_states::<InstrumentData>(
-                instruments,
-                time_engine_start,
-            ),
+            instruments: instrument_states,
             strategy: strategy.unwrap_or_default(),
             risk: risk.unwrap_or_default(),
         }
