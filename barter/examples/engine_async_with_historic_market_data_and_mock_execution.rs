@@ -27,7 +27,7 @@ use barter_instrument::{index::IndexedInstruments, instrument::InstrumentIndex};
 use futures::{Stream, StreamExt, stream};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use std::{fs::File, io::BufReader, time::Duration};
+use std::{fs::File, io::BufReader, marker::PhantomData, time::Duration};
 use tracing::{info, warn};
 
 const FILE_PATH_SYSTEM_CONFIG: &str = "barter/examples/config/system_config.json";
@@ -61,22 +61,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         DefaultStrategy::default(),
         DefaultRiskManager::default(),
         market_stream,
+        PhantomData::<DefaultStrategyState>,
     );
 
     // Build & run full system:
+    // See SystemBuilder for all configuration options
     let system = SystemBuilder::new(args)
         // Engine feed in Async mode (Stream input)
         .engine_feed_mode(EngineFeedMode::Stream)
-
         // Audit feed is disabled (Engine does not send audits)
         .audit_mode(AuditMode::Disabled)
-
         // Engine starts with TradingState::Enabled
         .trading_state(TradingState::Enabled)
-
         // Build System, but don't start spawning tasks yet
-        .build::<EngineEvent, DefaultInstrumentMarketData, DefaultStrategyState, DefaultRiskManagerState>()?
-
+        .build::<EngineEvent, DefaultInstrumentMarketData, DefaultRiskManagerState>()?
         // Init System, spawning component tasks on the current runtime
         .init_with_runtime(tokio::runtime::Handle::current())
         .await?;

@@ -2,7 +2,7 @@
 ///
 /// Provides data structures for configuring various aspects of a trading system,
 /// including instruments and execution components.
-use barter_execution::client::mock::MockExecutionConfig;
+use barter_execution::client::{bybit::BybitConfig, mock::MockExecutionConfig};
 use barter_instrument::{
     Underlying,
     asset::{Asset, name::AssetNameExchange},
@@ -64,6 +64,8 @@ pub struct InstrumentConfig {
 pub enum ExecutionConfig {
     /// Mock execution configuration for backtesting
     Mock(MockExecutionConfig),
+    /// Bybit spot execution config
+    BybitSpot(BybitConfig),
 }
 
 impl From<InstrumentConfig> for Instrument<ExchangeId, Asset> {

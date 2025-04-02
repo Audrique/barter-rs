@@ -16,12 +16,16 @@ use crate::{
     system::{System, SystemAuxillaryHandles, config::ExecutionConfig},
 };
 use barter_data::streams::reconnect::stream::ReconnectingStream;
+use barter_execution::client::bybit::BybitSpot;
 use barter_instrument::index::IndexedInstruments;
 use barter_integration::channel::{Channel, ChannelTxDroppable, mpsc_unbounded};
 use derive_more::Constructor;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData, time::Duration};
+
+/// Default execution request timeout
+const EXECUTION_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Defines how the `Engine` processes input events.
 ///
@@ -55,7 +59,7 @@ pub enum AuditMode {
 /// Contains all the required components to build and initialise a full Barter trading system,
 /// including the `Engine` and all supporting infrastructure.
 #[derive(Debug, Clone, PartialEq, PartialOrd, Constructor)]
-pub struct SystemArgs<'a, Clock, Strategy, Risk, MarketStream> {
+pub struct SystemArgs<'a, Clock, Strategy, Risk, MarketStream, StrategyState> {
     /// Indexed collection of instruments the system will track.
     pub instruments: &'a IndexedInstruments,
 
@@ -75,13 +79,16 @@ pub struct SystemArgs<'a, Clock, Strategy, Risk, MarketStream> {
 
     /// `Stream` of `MarketStreamEvent`s.
     pub market_stream: MarketStream,
+
+    // TODO: Can be used as an initial_strategy_state
+    pub _phantom: PhantomData<StrategyState>,
 }
 
 /// Builder for constructing a full Barter trading system.
 #[derive(Debug)]
-pub struct SystemBuilder<'a, Clock, Strategy, Risk, MarketStream> {
+pub struct SystemBuilder<'a, Clock, Strategy, Risk, MarketStream, StrategyState> {
     /// Required arguments for system construction
-    args: SystemArgs<'a, Clock, Strategy, Risk, MarketStream>,
+    args: SystemArgs<'a, Clock, Strategy, Risk, MarketStream, StrategyState>,
 
     /// Optional mode for engine event processing
     engine_feed_mode: Option<EngineFeedMode>,
@@ -91,20 +98,24 @@ pub struct SystemBuilder<'a, Clock, Strategy, Risk, MarketStream> {
 
     /// Optional initial trading state (enabled/disabled)
     trading_state: Option<TradingState>,
+
+    /// Optional initial strategy state
+    strategy_state: Option<StrategyState>,
 }
 
-impl<'a, Clock, Strategy, Risk, MarketStream>
-    SystemBuilder<'a, Clock, Strategy, Risk, MarketStream>
+impl<'a, Clock, Strategy, Risk, MarketStream, StrategyState>
+    SystemBuilder<'a, Clock, Strategy, Risk, MarketStream, StrategyState>
 {
     /// Create a new `SystemBuilder` with the provided `SystemArguments`.
     ///
     /// Initialises a builder with default values for optional configurations.
-    pub fn new(config: SystemArgs<'a, Clock, Strategy, Risk, MarketStream>) -> Self {
+    pub fn new(config: SystemArgs<'a, Clock, Strategy, Risk, MarketStream, StrategyState>) -> Self {
         Self {
             args: config,
             engine_feed_mode: None,
             audit_mode: None,
             trading_state: None,
+            strategy_state: None,
         }
     }
 
@@ -138,12 +149,20 @@ impl<'a, Clock, Strategy, Risk, MarketStream>
         }
     }
 
+    /// Optionally configure the initial strategy state.
+    pub fn strategy_state(self, value: StrategyState) -> Self {
+        Self {
+            strategy_state: Some(value),
+            ..self
+        }
+    }
+
     /// Build the [`SystemBuild`] with the configured builder settings.
     ///
     /// This constructs all the system components but does not start any tasks or streams.
     ///
     /// Initialise the `SystemBuild` instance to start the system.
-    pub fn build<Event, InstrumentData, StrategyState, RiskState>(
+    pub fn build<Event, InstrumentData, RiskState>(
         self,
     ) -> Result<
         SystemBuild<
@@ -174,15 +193,18 @@ impl<'a, Clock, Strategy, Risk, MarketStream>
                     strategy,
                     risk,
                     market_stream,
+                    _phantom: PhantomData,
                 },
             engine_feed_mode,
             audit_mode,
             trading_state,
+            strategy_state,
         } = self;
 
         let engine_feed_mode = engine_feed_mode.unwrap_or_default();
         let audit_mode = audit_mode.unwrap_or_default();
         let trading_state = trading_state.unwrap_or_default();
+        let strategy_state = strategy_state.unwrap_or_default();
 
         // Build Execution infrastructure
         let execution = executions
@@ -190,7 +212,10 @@ impl<'a, Clock, Strategy, Risk, MarketStream>
             .try_fold(
                 ExecutionBuilder::new(&instruments),
                 |builder, config| match config {
-                    ExecutionConfig::Mock(mock_config) => builder.add_mock(mock_config),
+                    ExecutionConfig::Mock(config) => builder.add_mock(config),
+                    ExecutionConfig::BybitSpot(config) => {
+                        builder.add_live::<BybitSpot>(config, EXECUTION_REQUEST_TIMEOUT)
+                    }
                 },
             )?
             .build();
@@ -199,6 +224,7 @@ impl<'a, Clock, Strategy, Risk, MarketStream>
         let state = EngineStateBuilder::new(&instruments)
             .time_engine_start(clock.time())
             .trading_state(trading_state)
+            .strategy(strategy_state)
             .build();
 
         // Construct Engine

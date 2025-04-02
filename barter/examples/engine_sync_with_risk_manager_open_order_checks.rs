@@ -206,7 +206,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Construct IndexedInstruments
     let instruments = IndexedInstruments::new(instruments);
 
-    // Initialise MarketData Stream & forward to Engine feed
+    // Initialise MarketData Stream
     let market_stream = init_indexed_multi_exchange_market_stream(
         &instruments,
         &[SubKind::PublicTrades, SubKind::OrderBooksL1],
@@ -221,22 +221,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         DefaultStrategy::default(),
         DefaultRiskManager::default(),
         market_stream,
+        PhantomData::<DefaultStrategyState>,
     );
 
     // Build & run full system:
+    // See SystemBuilder for all configuration options
     let system = SystemBuilder::new(args)
         // Engine feed in Sync mode (Iterator input)
         .engine_feed_mode(EngineFeedMode::Iterator)
-
         // Audit feed is disabled (Engine does not send audits)
         .audit_mode(AuditMode::Disabled)
-
         // Engine starts with TradingState::Enabled
         .trading_state(TradingState::Enabled)
-
         // Build System, but don't start spawning tasks yet
-        .build::<EngineEvent, DefaultInstrumentMarketData, DefaultStrategyState, DefaultRiskManagerState>()?
-
+        .build::<EngineEvent, DefaultInstrumentMarketData, DefaultRiskManagerState>()?
         // Init System, spawning component tasks on the current runtime
         .init_with_runtime(tokio::runtime::Handle::current())
         .await?;

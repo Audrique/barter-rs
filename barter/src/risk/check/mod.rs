@@ -67,3 +67,46 @@ pub struct CheckFailHigherThan<T> {
     /// The input value that caused the check to fail.
     pub input: T,
 }
+
+/// General risk check that validates if an input value is lower from some limit.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Deserialize, Serialize, Constructor)]
+pub struct CheckLowerThan<T> {
+    /// The lower limit value; check passes if input is >= limit.
+    pub limit: T,
+}
+
+impl<T> RiskCheck for CheckLowerThan<T>
+where
+    T: Clone + PartialOrd,
+{
+    type Input = T;
+    type Error = CheckFailLowerThan<T>;
+
+    fn name() -> &'static str {
+        "CheckLowerThan"
+    }
+
+    fn check(&self, input: &Self::Input) -> Result<(), Self::Error> {
+        if *input >= self.limit {
+            Ok(())
+        } else {
+            Err(CheckFailLowerThan {
+                limit: self.limit.clone(),
+                input: input.clone(),
+            })
+        }
+    }
+}
+
+/// Error returned when a [`CheckLowerThan`] validation fails.
+#[derive(
+    Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Deserialize, Serialize, Constructor, Error,
+)]
+#[error("CheckLowerThanFailed: input {input} < limit {limit}")]
+pub struct CheckFailLowerThan<T> {
+    /// The limit value.
+    pub limit: T,
+
+    /// The input value that caused the check to fail.
+    pub input: T,
+}

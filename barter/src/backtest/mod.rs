@@ -18,7 +18,7 @@ use crate::{
     risk::RiskManager,
     statistic::time::TimeInterval,
     strategy::{
-        algo::AlgoStrategy, close_positions::ClosePositionsStrategy,
+        DefaultStrategyState, algo::AlgoStrategy, close_positions::ClosePositionsStrategy,
         on_disconnect::OnDisconnectStrategy, on_trading_disabled::OnTradingDisabled,
     },
     system::{
@@ -32,7 +32,7 @@ use barter_instrument::{index::IndexedInstruments, instrument::InstrumentIndex};
 use futures::future::try_join_all;
 use rust_decimal::Decimal;
 use smol_str::SmolStr;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 /// Defines the interface and implementations for different types of market data sources
 /// that can be used in backtests.
@@ -220,12 +220,13 @@ where
         strategy: args_dynamic.strategy,
         risk: args_dynamic.risk,
         market_stream,
+        _phantom: PhantomData::<StrategyState>,
     };
 
     let system = SystemBuilder::new(system_args)
         .engine_feed_mode(EngineFeedMode::Stream)
         .trading_state(TradingState::Enabled)
-        .build::<EngineEvent<InstrumentData::MarketEventKind>, InstrumentData, StrategyState, RiskState>()?
+        .build::<EngineEvent<InstrumentData::MarketEventKind>, InstrumentData, RiskState>()?
         .init()
         .await?;
 

@@ -25,7 +25,7 @@ use barter_instrument::index::IndexedInstruments;
 use futures::StreamExt;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use std::{fs::File, io::BufReader, time::Duration};
+use std::{fs::File, io::BufReader, marker::PhantomData, time::Duration};
 use tracing::debug;
 
 const FILE_PATH_SYSTEM_CONFIG: &str = "barter/examples/config/system_config.json";
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Construct IndexedInstruments
     let instruments = IndexedInstruments::new(instruments);
 
-    // Initialise MarketData Stream & forward to Engine feed
+    // Initialise MarketData Stream
     let market_stream = init_indexed_multi_exchange_market_stream(
         &instruments,
         &[SubKind::PublicTrades, SubKind::OrderBooksL1],
@@ -60,22 +60,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         DefaultStrategy::default(),
         DefaultRiskManager::default(),
         market_stream,
+        PhantomData::<DefaultStrategyState>,
     );
 
     // Build & run full system:
+    // See SystemBuilder for all configuration options
     let mut system = SystemBuilder::new(args)
         // Engine feed in Sync mode (Iterator input)
         .engine_feed_mode(EngineFeedMode::Iterator)
-
         // Audit feed is enabled (Engine sends audits)
         .audit_mode(AuditMode::Enabled)
-
         // Engine starts with TradingState::Disabled
         .trading_state(TradingState::Disabled)
-
         // Build System, but don't start spawning tasks yet
-        .build::<EngineEvent, DefaultInstrumentMarketData, DefaultStrategyState, DefaultRiskManagerState>()?
-
+        .build::<EngineEvent, DefaultInstrumentMarketData, DefaultRiskManagerState>()?
         // Init System, spawning component tasks on the current runtime
         .init_with_runtime(tokio::runtime::Handle::current())
         .await?;
