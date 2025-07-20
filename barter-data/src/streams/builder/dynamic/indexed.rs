@@ -64,7 +64,7 @@ pub async fn init_indexed_multi_exchange_market_stream(
 pub fn generate_indexed_market_data_subscription_batches(
     instruments: &IndexedInstruments,
     sub_kinds: &[SubKind],
-) -> Vec<Vec<Subscription<ExchangeId, MarketInstrumentData<InstrumentIndex>, SubKind>>> {
+) -> Vec<Subscription<ExchangeId, MarketInstrumentData<InstrumentIndex>, SubKind>> {
     // Generate Iterator<Item = Keyed<ExchangeId, MarketInstrumentData<InstrumentIndex>>>
     let instruments = instruments.instruments().iter().map(|keyed| {
         let exchange = keyed.value.exchange.value;
@@ -79,24 +79,22 @@ pub fn generate_indexed_market_data_subscription_batches(
     instruments
         .chunk_by(|exchange| exchange.key)
         .into_iter()
-        .map(|(_exchange, instruments)| {
-            instruments
-                .into_iter()
-                .flat_map(
-                    |Keyed {
-                         key: exchange,
-                         value: instrument,
-                     }| {
-                        sub_kinds
-                            .iter()
-                            .map(move |kind| Subscription::new(exchange, instrument.clone(), *kind))
-                    },
-                )
-                .collect::<Vec<_>>()
+        .flat_map(|(_exchange, instruments)| {
+            instruments.into_iter().flat_map(
+                |Keyed {
+                     key: exchange,
+                     value: instrument,
+                 }| {
+                    sub_kinds
+                        .iter()
+                        .map(move |kind| Subscription::new(exchange, instrument.clone(), *kind))
+                },
+            )
         })
         .collect()
 }
 
+// TODO: also remove the batch structure from this function? But it seems unused?
 /// Indexes batches of market data `Subscriptions` using a collection of `IndexedInstruments`.
 ///
 /// This function maps unindexed market data `Subscriptions` to indexed ones by:
