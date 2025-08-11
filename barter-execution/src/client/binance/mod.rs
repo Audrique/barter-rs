@@ -24,6 +24,7 @@ use http::{
 use itertools::Itertools;
 use tracing::warn;
 
+mod config;
 mod http;
 mod model;
 mod websocket;

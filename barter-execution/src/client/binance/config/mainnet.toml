@@ -1,0 +1,7 @@
+[api]
+http_base_url = "https://api.binance.com"
+websocket_base_url = "wss://stream.binance.com:9443"
+
+[credentials]
+api_key = "${BINANCE_MAINNET_API_KEY}"
+api_secret = "${BINANCE_MAINNET_API_SECRET}"

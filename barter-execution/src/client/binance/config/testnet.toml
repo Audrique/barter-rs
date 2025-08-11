@@ -1,0 +1,7 @@
+[api]
+http_base_url = "https://testnet.binance.vision/api"
+websocket_base_url = "wss://stream.testnet.binance.vision/ws"
+
+[credentials]
+api_key = "${BINANCE_TESTNET_API_KEY}"
+api_secret = "${BINANCE_TESTNET_API_SECRET}"
