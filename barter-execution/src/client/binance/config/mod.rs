@@ -1,5 +1,6 @@
 use std::{env, fs, path::Path};
 
+use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -13,15 +14,15 @@ struct GeneralApiConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct NetworkConfigFile {
+struct NetworkConfig {
     api: NetworkBaseUrls,
     credentials: Credentials,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct NetworkBaseUrls {
-    http: String,
-    websocket: String,
+    http_base_url: String,
+    websocket_base_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -46,46 +47,25 @@ impl BinanceSpotConfig {
 
     pub fn load_from_dir<P: AsRef<Path>>(config_dir: P) -> Result<Self, ConfigError> {
         let config_dir = config_dir.as_ref();
-        let general = read_toml::<GeneralConfig>(config_dir.join("general.toml"))?;
-        let network_file = if general.api.testnet { "testnet.toml" } else { "mainnet.toml" };
-        let network = read_toml::<NetworkConfigFile>(config_dir.join(network_file))?;
+        let general_config = Config::builder()
+            .add_source(File::from(config_dir.join("general.toml")))
+            .build()?;
 
+        let general: GeneralConfig = general_config.try_deserialize()?;
+        let network_file = if general.api.testnet { "testnet.toml" } else { "mainnet.toml" };
+        dotenvy::dotenv().expect("Failed to read .env file");
+        let settings = Config::builder()
+            .add_source(File::from(config_dir.join(network_file)))
+            .add_source(Environment::default().separator("__"))
+            .build()?;
+
+        let network_config: NetworkConfig = settings.try_deserialize()?;
         Ok(BinanceSpotConfig {
-            http_base_url: network.api.http,
-            websocket_base_url: network.api.websocket,
-            api_key: expand_env_var(&network.credentials.api_key)?,
-            api_secret: expand_env_var(&network.credentials.api_secret)?,
+            http_base_url: network_config.api.http_base_url,
+            websocket_base_url: network_config.api.websocket_base_url,
+            api_key: network_config.credentials.api_key,
+            api_secret: network_config.credentials.api_secret,
             is_testnet: general.api.testnet,
         })
     }
-}
-
-fn read_toml<T: for<'de> Deserialize<'de>>(path: impl AsRef<Path>) -> Result<T, ConfigError> {
-    let path = path.as_ref();
-    let content = fs::read_to_string(path)
-        .map_err(|e| ConfigError::FileRead(path.display().to_string(), e))?;
-
-    toml::from_str(&content)
-        .map_err(|e| ConfigError::Parse(path.display().to_string(), e))
-}
-
-fn expand_env_var(value: &str) -> Result<String, ConfigError> {
-    if value.starts_with("${") && value.ends_with('}') {
-        let var_name = &value[2..value.len() - 1];
-        env::var(var_name).map_err(|_| ConfigError::EnvVar(var_name.to_string()))
-    } else {
-        Ok(value.to_string())
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ConfigError {
-    #[error("Failed to read '{0}': {1}")]
-    FileRead(String, std::io::Error),
-
-    #[error("Failed to parse '{0}': {1}")]
-    Parse(String, toml::de::Error),
-
-    #[error("Environment variable '{0}' not found")]
-    EnvVar(String),
 }

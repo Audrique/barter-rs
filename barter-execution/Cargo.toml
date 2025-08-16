@@ -49,5 +49,6 @@ rand = { workspace = true }
 chrono = { workspace = true, features = ["serde"]}
 itertools = { workspace = true }
 derive_more = { workspace = true, features = ["constructor", "from", "display"]}
-toml = "0.8.20"
 
+config = { version="0.15.14", features = ["toml"] }
+dotenvy = "0.15.7"
