@@ -5,5 +5,5 @@ Cargo.lock
 # IDE
 .idea/
 *.iml
-.env
+barter-execution/.env
 .vscode
