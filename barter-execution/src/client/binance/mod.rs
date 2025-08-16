@@ -2,7 +2,7 @@ use crate::{
     balance::AssetBalance,
     client::ExecutionClient,
     error::UnindexedClientError,
-    order::{Cancelled, Open, Order, RequestCancel, RequestOpen},
+    order::{state::Cancelled, state::Open, Order, request::OrderRequestCancel, request::OrderRequestOpen, request::UnindexedOrderResponseCancel},
     trade::Trade,
     ApiCredentials, InstrumentAccountSnapshot, UnindexedAccountEvent, UnindexedAccountSnapshot,
 };
@@ -23,22 +23,18 @@ use http::{
 };
 use itertools::Itertools;
 use tracing::warn;
+use crate::client::binance::config::BinanceSpotConfig;
+use crate::error::UnindexedOrderError;
 
-mod config;
+pub mod config;
 mod http;
 mod model;
 mod websocket;
 
-const HTTP_BASE_URL_BINANCE_SPOT: &str = "https://api.binance.com";
-
-#[derive(Debug, Clone)]
-pub struct BinanceSpotConfig {
-    credentials: ApiCredentials,
-}
-
 #[derive(Debug, Clone)]
 pub struct BinanceSpot {
     rest_client: RestClient<'static, BinanceSpotSigner, BinanceSpotHttpParser>,
+    config: BinanceSpotConfig
 }
 
 impl ExecutionClient for BinanceSpot {
@@ -47,15 +43,16 @@ impl ExecutionClient for BinanceSpot {
     type AccountStream = futures::stream::Empty<UnindexedAccountEvent>;
 
     fn new(config: Self::Config) -> Self {
-        let hmac = Hmac::new_from_slice(config.credentials.secret.as_bytes())
+        let hmac = Hmac::new_from_slice(config.api_secret.as_bytes())
             .expect("ApiCredentials secret invalid length");
 
         Self {
             rest_client: RestClient::new(
-                HTTP_BASE_URL_BINANCE_SPOT,
-                RequestSigner::new(BinanceSigner::new(config.credentials.key), hmac, HexEncoder),
+                config.http_base_url.clone(),
+                RequestSigner::new(BinanceSigner::new(config.api_key.clone()), hmac, HexEncoder),
                 BinanceSpotHttpParser,
             ),
+            config
         }
     }
 
@@ -70,8 +67,8 @@ impl ExecutionClient for BinanceSpot {
             .fetch_open_orders()
             .await?
             .into_iter()
-            .sorted_by(|a, b| a.instrument.cmp(&b.instrument))
-            .chunk_by(|order| order.instrument.clone());
+            .sorted_by(|a, b| a.key.instrument.cmp(&b.key.instrument))
+            .chunk_by(|order| order.key.instrument.clone());
 
         let instruments = orders_by_instrument
             .into_iter()
@@ -113,15 +110,17 @@ impl ExecutionClient for BinanceSpot {
 
     async fn cancel_order(
         &self,
-        request: Order<ExchangeId, &InstrumentNameExchange, RequestCancel>,
-    ) -> Order<ExchangeId, InstrumentNameExchange, Result<Cancelled, UnindexedClientError>> {
+        request: OrderRequestCancel<ExchangeId, &InstrumentNameExchange>,
+    ) -> Option<UnindexedOrderResponseCancel> {
         todo!()
     }
 
     async fn open_order(
         &self,
-        request: Order<ExchangeId, &InstrumentNameExchange, RequestOpen>,
-    ) -> Order<ExchangeId, InstrumentNameExchange, Result<Open, UnindexedClientError>> {
+        request: OrderRequestOpen<ExchangeId, &InstrumentNameExchange>,
+    ) -> Option<
+            Order<ExchangeId, InstrumentNameExchange, Result<Open, UnindexedOrderError>>,
+        > {
         todo!()
     }
 

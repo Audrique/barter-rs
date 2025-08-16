@@ -31,7 +31,7 @@ struct Credentials {
 }
 
 #[derive(Debug, Clone)]
-pub struct BinanceConfig {
+pub struct BinanceSpotConfig {
     pub http_base_url: String,
     pub websocket_base_url: String,
     pub api_key: String,
@@ -39,22 +39,18 @@ pub struct BinanceConfig {
     pub is_testnet: bool,
 }
 
-impl BinanceConfig {
+impl BinanceSpotConfig {
     pub fn load() -> Result<Self, ConfigError> {
         Self::load_from_dir("config")
     }
 
     pub fn load_from_dir<P: AsRef<Path>>(config_dir: P) -> Result<Self, ConfigError> {
         let config_dir = config_dir.as_ref();
-
-        // Read general.toml to know which network
         let general = read_toml::<GeneralConfig>(config_dir.join("general.toml"))?;
-
-        // Read the appropriate network config
         let network_file = if general.api.testnet { "testnet.toml" } else { "mainnet.toml" };
         let network = read_toml::<NetworkConfigFile>(config_dir.join(network_file))?;
 
-        Ok(BinanceConfig {
+        Ok(BinanceSpotConfig {
             http_base_url: network.api.http,
             websocket_base_url: network.api.websocket,
             api_key: expand_env_var(&network.credentials.api_key)?,
